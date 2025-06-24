@@ -1,0 +1,465 @@
+{
+  "name": "Stripe Invoice Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/stripe-payment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "stripe-webhook",
+      "name": "Stripe Payment Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "stripe-payment-webhook"
+    },
+    {
+      "parameters": {
+        "content": "TIP: Stripe webhooks are critical for real-time payment processing. Always verify webhook signatures in production to prevent fraud. Use endpoint secrets from Stripe dashboard.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-1",
+      "name": "n8n Tip - Webhook Security",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [440, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "payment_intent.succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-event-type",
+      "name": "Payment Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "paymentId",
+              "value": "={{ $json.data.object.id }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "amount",
+              "value": "={{ $json.data.object.amount / 100 }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-3",
+              "name": "currency",
+              "value": "={{ $json.data.object.currency.toUpperCase() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "customerEmail",
+              "value": "={{ $json.data.object.receipt_email }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "customerName",
+              "value": "={{ $json.data.object.billing_details?.name || 'Valued Customer' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-6",
+              "name": "paymentDate",
+              "value": "={{ new Date($json.data.object.created * 1000).toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-7",
+              "name": "description",
+              "value": "={{ $json.data.object.description || 'Payment received' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-8",
+              "name": "invoiceNumber",
+              "value": "INV-{{ new Date().getFullYear() }}-{{ String(new Date().getMonth() + 1).padStart(2, '0') }}-{{ String(Math.floor(Math.random() * 10000)).padStart(4, '0') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-payment-data",
+      "name": "Extract Payment Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "resource": "customer",
+        "operation": "get",
+        "customerId": "={{ $('Stripe Payment Webhook').item.json.data.object.customer }}"
+      },
+      "id": "get-customer-details",
+      "name": "Get Customer Details",
+      "type": "n8n-nodes-base.stripe",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always fetch full customer details from Stripe rather than relying on webhook data. Webhooks may not include all required fields for invoice generation.",
+        "height": 80,
+        "width": 350
+      },
+      "id": "tip-node-2",
+      "name": "n8n Tip - Data Completeness",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "billingAddress",
+              "value": "={{ \n  const addr = $json.address || {};\n  const line1 = addr.line1 || '';\n  const line2 = addr.line2 || '';\n  const city = addr.city || '';\n  const state = addr.state || '';\n  const postal = addr.postal_code || '';\n  const country = addr.country || '';\n  \n  return [line1, line2, city, state, postal, country].filter(Boolean).join('\\n');\n}}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "customerPhone",
+              "value": "={{ $json.phone || 'Not provided' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "customerEmail",
+              "value": "={{ $json.email || $('Extract Payment Data').item.json.customerEmail }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "customerName",
+              "value": "={{ $json.name || $('Extract Payment Data').item.json.customerName }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-customer-data",
+      "name": "Prepare Customer Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "invoiceHtml",
+              "value": "<!DOCTYPE html>\n<html>\n<head>\n    <meta charset=\"utf-8\">\n    <title>Invoice {{ $('Extract Payment Data').item.json.invoiceNumber }}</title>\n    <style>\n        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #333; }\n        .invoice-container { max-width: 800px; margin: 0 auto; background: white; }\n        .header { border-bottom: 3px solid #007bff; padding-bottom: 20px; margin-bottom: 30px; }\n        .company-info { float: left; }\n        .invoice-info { float: right; text-align: right; }\n        .clearfix::after { content: \"\"; display: table; clear: both; }\n        .billing-section { margin: 30px 0; }\n        .billing-to { float: left; width: 48%; }\n        .payment-details { float: right; width: 48%; text-align: right; }\n        .items-table { width: 100%; border-collapse: collapse; margin: 30px 0; }\n        .items-table th, .items-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }\n        .items-table th { background-color: #f8f9fa; font-weight: bold; }\n        .total-section { text-align: right; margin-top: 20px; }\n        .total-line { margin: 5px 0; }\n        .total-amount { font-size: 18px; font-weight: bold; color: #007bff; }\n        .footer { margin-top: 50px; text-align: center; color: #666; font-size: 12px; border-top: 1px solid #ddd; padding-top: 20px; }\n        .payment-status { background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; margin: 20px 0; text-align: center; font-weight: bold; }\n    </style>\n</head>\n<body>\n    <div class=\"invoice-container\">\n        <div class=\"header clearfix\">\n            <div class=\"company-info\">\n                <h1>Your Company Name</h1>\n                <p>123 Business Street<br>\n                City, State 12345<br>\n                Phone: (555) 123-4567<br>\n                Email: billing@company.com</p>\n            </div>\n            <div class=\"invoice-info\">\n                <h1>INVOICE</h1>\n                <p><strong>Invoice #:</strong> {{ $('Extract Payment Data').item.json.invoiceNumber }}<br>\n                <strong>Date:</strong> {{ new Date($('Extract Payment Data').item.json.paymentDate).toLocaleDateString() }}<br>\n                <strong>Due Date:</strong> PAID</p>\n            </div>\n        </div>\n        \n        <div class=\"payment-status\">\n            PAYMENT RECEIVED - THANK YOU\n        </div>\n        \n        <div class=\"billing-section clearfix\">\n            <div class=\"billing-to\">\n                <h3>Bill To:</h3>\n                <p><strong>{{ $json.customerName }}</strong><br>\n                {{ $json.customerEmail }}<br>\n                {{ $json.customerPhone }}<br>\n                {{ $json.billingAddress || 'Address not provided' }}</p>\n            </div>\n            <div class=\"payment-details\">\n                <h3>Payment Details:</h3>\n                <p><strong>Payment ID:</strong> {{ $('Extract Payment Data').item.json.paymentId }}<br>\n                <strong>Payment Date:</strong> {{ new Date($('Extract Payment Data').item.json.paymentDate).toLocaleDateString() }}<br>\n                <strong>Payment Method:</strong> Credit Card<br>\n                <strong>Status:</strong> Paid</p>\n            </div>\n        </div>\n        \n        <table class=\"items-table\">\n            <thead>\n                <tr>\n                    <th>Description</th>\n                    <th>Quantity</th>\n                    <th>Unit Price</th>\n                    <th>Total</th>\n                </tr>\n            </thead>\n            <tbody>\n                <tr>\n                    <td>{{ $('Extract Payment Data').item.json.description }}</td>\n                    <td>1</td>\n                    <td>{{ $('Extract Payment Data').item.json.currency }} {{ $('Extract Payment Data').item.json.amount.toFixed(2) }}</td>\n                    <td>{{ $('Extract Payment Data').item.json.currency }} {{ $('Extract Payment Data').item.json.amount.toFixed(2) }}</td>\n                </tr>\n            </tbody>\n        </table>\n        \n        <div class=\"total-section\">\n            <div class=\"total-line\">Subtotal: {{ $('Extract Payment Data').item.json.currency }} {{ $('Extract Payment Data').item.json.amount.toFixed(2) }}</div>\n            <div class=\"total-line\">Tax: {{ $('Extract Payment Data').item.json.currency }} 0.00</div>\n            <div class=\"total-line total-amount\">Total: {{ $('Extract Payment Data').item.json.currency }} {{ $('Extract Payment Data').item.json.amount.toFixed(2) }}</div>\n        </div>\n        \n        <div class=\"footer\">\n            <p>Thank you for your business! If you have any questions about this invoice, please contact us.</p>\n            <p>This invoice was automatically generated and is valid without signature.</p>\n        </div>\n    </div>\n</body>\n</html>",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "generate-invoice-html",
+      "name": "Generate Invoice HTML",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: For production invoices, consider using dedicated PDF generation services like Puppeteer or HTMLtoPDF APIs. This ensures consistent formatting across all devices and email clients.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-3",
+      "name": "n8n Tip - PDF Generation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Prepare Customer Data').item.json.customerEmail }}",
+        "subject": "Invoice {{ $('Extract Payment Data').item.json.invoiceNumber }} - Payment Received",
+        "emailType": "html",
+        "message": "<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        .container { max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; }\n        .header { background-color: #007bff; color: white; padding: 20px; text-align: center; }\n        .content { padding: 30px 20px; }\n        .payment-summary { background-color: #d4edda; padding: 20px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #28a745; }\n        .invoice-details { background-color: #f8f9fa; padding: 15px; margin: 20px 0; border-radius: 5px; }\n        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <h1>Payment Received</h1>\n            <p>Thank you for your payment!</p>\n        </div>\n        <div class=\"content\">\n            <p>Dear {{ $('Prepare Customer Data').item.json.customerName }},</p>\n            \n            <p>We have successfully received your payment. Here are the details:</p>\n            \n            <div class=\"payment-summary\">\n                <h3>Payment Summary</h3>\n                <p><strong>Amount:</strong> {{ $('Extract Payment Data').item.json.currency }} {{ $('Extract Payment Data').item.json.amount.toFixed(2) }}</p>\n                <p><strong>Payment Date:</strong> {{ new Date($('Extract Payment Data').item.json.paymentDate).toLocaleDateString() }}</p>\n                <p><strong>Payment ID:</strong> {{ $('Extract Payment Data').item.json.paymentId }}</p>\n                <p><strong>Description:</strong> {{ $('Extract Payment Data').item.json.description }}</p>\n            </div>\n            \n            <div class=\"invoice-details\">\n                <h3>Invoice Information</h3>\n                <p><strong>Invoice Number:</strong> {{ $('Extract Payment Data').item.json.invoiceNumber }}</p>\n                <p><strong>Status:</strong> Paid in Full</p>\n            </div>\n            \n            <p>Your detailed invoice is attached to this email as an HTML file. You can open it in any web browser to view or print it.</p>\n            \n            <p>If you have any questions about this payment or need additional documentation, please don't hesitate to contact our billing department.</p>\n            \n            <p>Thank you for your business!</p>\n            \n            <p>Best regards,<br>\n            The Billing Team</p>\n        </div>\n        <div class=\"footer\">\n            <p>This is an automated email confirmation. Please save this email for your records.</p>\n        </div>\n    </div>\n</body>\n</html>",
+        "attachments": {
+          "attachments": [
+            {
+              "name": "Invoice_{{ $('Extract Payment Data').item.json.invoiceNumber }}.html",
+              "content": "={{ $('Generate Invoice HTML').item.json.invoiceHtml }}",
+              "type": "text/html"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-invoice-email",
+      "name": "Send Invoice Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "folderId": {
+          "__rl": true,
+          "value": "YOUR_DRIVE_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "Invoices"
+        },
+        "name": "Invoice_{{ $('Extract Payment Data').item.json.invoiceNumber }}_{{ $('Prepare Customer Data').item.json.customerName.replace(/[^a-zA-Z0-9]/g, '_') }}.html",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "id": "save-to-drive",
+      "name": "Save Invoice to Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "data",
+              "value": "={{ $('Generate Invoice HTML').item.json.invoiceHtml }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-drive-data",
+      "name": "Prepare Drive Upload",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1670, 400]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C9876543210",
+          "mode": "list",
+          "cachedResultName": "accounting"
+        },
+        "text": "Payment Received\n\nCustomer: {{ $('Prepare Customer Data').item.json.customerName }}\nEmail: {{ $('Prepare Customer Data').item.json.customerEmail }}\nAmount: {{ $('Extract Payment Data').item.json.currency }} {{ $('Extract Payment Data').item.json.amount.toFixed(2) }}\nInvoice: {{ $('Extract Payment Data').item.json.invoiceNumber }}\nPayment ID: {{ $('Extract Payment Data').item.json.paymentId }}\nDate: {{ new Date($('Extract Payment Data').item.json.paymentDate).toLocaleDateString() }}\n\nInvoice has been emailed to customer and saved to Google Drive.",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "notify-accounting",
+      "name": "Notify Accounting Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always notify relevant teams about payments. This creates transparency and helps with cash flow management. Consider adding to accounting software via API as well.",
+        "height": 80,
+        "width": 350
+      },
+      "id": "tip-node-4",
+      "name": "n8n Tip - Team Notifications",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [2000, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"success\", \"message\": \"Invoice generated and sent\", \"invoice_number\": \"{{ $('Extract Payment Data').item.json.invoiceNumber }}\" }"
+      },
+      "id": "webhook-response-success",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ignored\", \"message\": \"Event type not handled\", \"event_type\": \"{{ $json.type }}\" }"
+      },
+      "id": "webhook-response-ignored",
+      "name": "Ignored Event Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 480]
+    }
+  ],
+  "connections": {
+    "Stripe Payment Webhook": {
+      "main": [
+        [
+          {
+            "node": "Payment Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payment Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Extract Payment Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignored Event Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Payment Data": {
+      "main": [
+        [
+          {
+            "node": "Get Customer Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Customer Details": {
+      "main": [
+        [
+          {
+            "node": "Prepare Customer Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Customer Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Invoice HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Invoice HTML": {
+      "main": [
+        [
+          {
+            "node": "Send Invoice Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Drive Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Invoice Email": {
+      "main": [
+        [
+          {
+            "node": "Notify Accounting Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Drive Upload": {
+      "main": [
+        [
+          {
+            "node": "Save Invoice to Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Invoice to Drive": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Accounting Team": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "flow-v3",
+  "id": "stripe-invoice-automation",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

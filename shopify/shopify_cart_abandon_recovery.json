@@ -1,0 +1,384 @@
+{
+  "name": "Shopify Abandoned Cart Recovery",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/abandoned-cart",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Cart Abandoned Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "abandoned-cart-webhook"
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always validate webhook data first. Shopify sends different payload structures for different events. Use IF nodes to check for required fields before processing.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-1",
+      "name": "n8n Tip - Webhook Validation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [440, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "condition-2", 
+              "leftValue": "={{ $json.line_items }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-data-node",
+      "name": "Validate Cart Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "hours"
+      },
+      "id": "wait-node",
+      "name": "Wait 2 Hours",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2Api",
+        "resource": "order",
+        "operation": "getAll",
+        "filters": {
+          "email": "={{ $('Cart Abandoned Webhook').item.json.email }}",
+          "created_at_min": "={{ $now.minus({hours: 3}).toISO() }}"
+        },
+        "options": {
+          "limit": 5
+        }
+      },
+      "id": "check-orders-node", 
+      "name": "Check Recent Orders",
+      "type": "n8n-nodes-base.shopify",
+      "typeVersion": 1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-purchased",
+      "name": "Still Abandoned?",
+      "type": "n8n-nodes-base.if", 
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Use the Wait node for delayed actions. For production, consider using the Schedule Trigger instead of Wait to handle server restarts better.",
+        "height": 80,
+        "width": 300
+      },
+      "id": "tip-node-2",
+      "name": "n8n Tip - Wait vs Schedule",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [680, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "customerEmail",
+              "value": "={{ $('Cart Abandoned Webhook').item.json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2", 
+              "name": "customerName",
+              "value": "={{ $('Cart Abandoned Webhook').item.json.billing_address?.first_name || 'Valued Customer' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "cartTotal",
+              "value": "={{ $('Cart Abandoned Webhook').item.json.total_price }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "cartUrl", 
+              "value": "={{ $('Cart Abandoned Webhook').item.json.abandoned_checkout_url }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "productNames",
+              "value": "={{ $('Cart Abandoned Webhook').item.json.line_items.map(item => item.title).join(', ') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-email-data",
+      "name": "Prepare Email Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.customerEmail }}",
+        "subject": "You left something in your cart, {{ $json.customerName }}!",
+        "emailType": "html",
+        "message": "<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        .container { max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; }\n        .header { background-color: #f8f9fa; padding: 20px; text-align: center; }\n        .content { padding: 30px 20px; }\n        .product-section { background-color: #f8f9fa; padding: 15px; margin: 20px 0; border-radius: 5px; }\n        .cta-button { background-color: #007bff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0; }\n        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <h1>Don't forget your items!</h1>\n        </div>\n        <div class=\"content\">\n            <p>Hi {{ $json.customerName }},</p>\n            <p>You left some great items in your cart. Don't let them get away!</p>\n            \n            <div class=\"product-section\">\n                <h3>Your Items:</h3>\n                <p>{{ $json.productNames }}</p>\n                <p><strong>Total: ${{ $json.cartTotal }}</strong></p>\n            </div>\n            \n            <p>Complete your purchase now and get these items shipped to you quickly.</p>\n            \n            <a href=\"{{ $json.cartUrl }}\" class=\"cta-button\">Complete Your Purchase</a>\n            \n            <p>If you have any questions, just reply to this email. We're here to help!</p>\n            \n            <p>Best regards,<br>Your Store Team</p>\n        </div>\n        <div class=\"footer\">\n            <p>This email was sent because you left items in your shopping cart.</p>\n        </div>\n    </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-recovery-email",
+      "name": "Send Recovery Email", 
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2Api",
+        "resource": "customer",
+        "operation": "update",
+        "customerId": "={{ $('Cart Abandoned Webhook').item.json.customer?.id }}",
+        "updateFields": {
+          "tags": "={{ $('Cart Abandoned Webhook').item.json.customer?.tags ? $('Cart Abandoned Webhook').item.json.customer.tags + ',abandoned-cart-email-sent' : 'abandoned-cart-email-sent' }}"
+        }
+      },
+      "id": "tag-customer",
+      "name": "Tag Customer",
+      "type": "n8n-nodes-base.shopify", 
+      "typeVersion": 1,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always tag customers for follow-up campaigns. This prevents sending duplicate emails and helps with segmentation.",
+        "height": 80,
+        "width": 300
+      },
+      "id": "tip-node-3",
+      "name": "n8n Tip - Customer Tagging",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1780, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"success\", \"message\": \"Abandoned cart recovery email sent\" }"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json", 
+        "responseBody": "{ \"status\": \"skipped\", \"message\": \"Customer completed purchase\" }"
+      },
+      "id": "webhook-response-skip",
+      "name": "Skip - Already Purchased",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 480]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"error\", \"message\": \"Invalid cart data\" }"
+      },
+      "id": "webhook-response-error",
+      "name": "Error - Invalid Data", 
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 480]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always respond to webhooks, even for errors. This prevents Shopify from retrying failed webhooks unnecessarily.",
+        "height": 80,
+        "width": 350
+      },
+      "id": "tip-node-4",
+      "name": "n8n Tip - Webhook Responses",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1340, 580]
+    }
+  ],
+  "connections": {
+    "Cart Abandoned Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Cart Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Cart Data": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 Hours",
+            "type": "main", 
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error - Invalid Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 Hours": {
+      "main": [
+        [
+          {
+            "node": "Check Recent Orders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Recent Orders": {
+      "main": [
+        [
+          {
+            "node": "Still Abandoned?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still Abandoned?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip - Already Purchased", 
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email Data": {
+      "main": [
+        [
+          {
+            "node": "Send Recovery Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Recovery Email": {
+      "main": [
+        [
+          {
+            "node": "Tag Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag Customer": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "flow-v1",
+  "id": "shopify-abandoned-cart-recovery",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

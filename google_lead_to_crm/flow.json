@@ -1,0 +1,456 @@
+{
+  "name": "Google Forms Lead to CRM Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "formSubmit",
+        "formId": {
+          "__rl": true,
+          "value": "YOUR_FORM_ID",
+          "mode": "list",
+          "cachedResultName": "Lead Generation Form"
+        },
+        "options": {}
+      },
+      "id": "google-forms-trigger",
+      "name": "New Form Submission",
+      "type": "n8n-nodes-base.googleFormsTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Google Forms Trigger polls every minute by default. For high-volume forms, consider using Google Sheets trigger with form responses linked to avoid API limits.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-1",
+      "name": "n8n Tip - Form Triggers",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [440, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "email",
+              "value": "={{ $json['Email Address'] || $json.email || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "fullName",
+              "value": "={{ $json['Full Name'] || $json['Name'] || ($json['First Name'] + ' ' + $json['Last Name']) || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "company",
+              "value": "={{ $json['Company'] || $json['Company Name'] || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "phone",
+              "value": "={{ $json['Phone'] || $json['Phone Number'] || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "budget",
+              "value": "={{ $json['Budget'] || $json['Project Budget'] || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-6",
+              "name": "leadSource",
+              "value": "Google Forms",
+              "type": "string"
+            },
+            {
+              "id": "assignment-7",
+              "name": "submissionTime",
+              "value": "={{ $json.Timestamp || $now }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-8",
+              "name": "message",
+              "value": "={{ $json['Message'] || $json['Project Details'] || $json['Comments'] || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "normalize-data",
+      "name": "Normalize Form Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            },
+            {
+              "id": "condition-3",
+              "leftValue": "={{ $json.fullName }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-lead",
+      "name": "Validate Lead Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always validate email format with regex. Invalid emails will bounce and hurt your sender reputation. Use strict validation for better lead quality.",
+        "height": 80,
+        "width": 350
+      },
+      "id": "tip-node-2",
+      "name": "n8n Tip - Data Validation",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [680, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "leadScore",
+              "value": "={{ \n  let score = 0;\n  \n  // Email validation (already passed)\n  score += 10;\n  \n  // Company provided\n  if ($json.company && $json.company.length > 0) score += 20;\n  \n  // Phone provided\n  if ($json.phone && $json.phone.length > 0) score += 15;\n  \n  // Budget indication\n  if ($json.budget) {\n    const budget = $json.budget.toLowerCase();\n    if (budget.includes('10000') || budget.includes('10,000') || budget.includes('$10k')) score += 30;\n    else if (budget.includes('5000') || budget.includes('5,000') || budget.includes('$5k')) score += 20;\n    else if (budget.includes('1000') || budget.includes('1,000') || budget.includes('$1k')) score += 10;\n  }\n  \n  // Message length (detailed inquiry)\n  if ($json.message && $json.message.length > 100) score += 15;\n  \n  // Business email domain (not gmail/yahoo/hotmail)\n  const email = $json.email.toLowerCase();\n  if (!email.includes('gmail') && !email.includes('yahoo') && !email.includes('hotmail') && !email.includes('outlook')) {\n    score += 20;\n  }\n  \n  return Math.min(score, 100);\n}}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-2",
+              "name": "leadPriority",
+              "value": "={{ $json.leadScore >= 70 ? 'Hot' : $json.leadScore >= 40 ? 'Warm' : 'Cold' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "assignedSalesperson",
+              "value": "={{ \n  // Round-robin assignment based on company domain or lead score\n  const salesTeam = ['alice@company.com', 'bob@company.com', 'charlie@company.com'];\n  \n  if ($json.leadScore >= 70) {\n    // Hot leads go to senior rep\n    return 'alice@company.com';\n  } else {\n    // Use hash of email for consistent assignment\n    const emailHash = $json.email.split('').reduce((a, b) => {\n      a = ((a << 5) - a) + b.charCodeAt(0);\n      return a & a;\n    }, 0);\n    return salesTeam[Math.abs(emailHash) % salesTeam.length];\n  }\n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "score-and-assign",
+      "name": "Score and Assign Lead",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Lead scoring helps prioritize follow-up efforts. Use consistent criteria and adjust weights based on your conversion data. Consider industry, company size, and urgency indicators.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-3",
+      "name": "n8n Tip - Lead Scoring",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Leads Database"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $json.submissionTime }}",
+            "Email": "={{ $json.email }}",
+            "Full Name": "={{ $json.fullName }}",
+            "Company": "={{ $json.company }}",
+            "Phone": "={{ $json.phone }}",
+            "Budget": "={{ $json.budget }}",
+            "Message": "={{ $json.message }}",
+            "Lead Score": "={{ $json.leadScore }}",
+            "Priority": "={{ $json.leadPriority }}",
+            "Assigned To": "={{ $json.assignedSalesperson }}",
+            "Source": "={{ $json.leadSource }}",
+            "Status": "New"
+          }
+        },
+        "options": {}
+      },
+      "id": "add-to-spreadsheet",
+      "name": "Add to Leads Database",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1234567890",
+          "mode": "list",
+          "cachedResultName": "sales-leads"
+        },
+        "text": "🎯 *New {{ $json.leadPriority }} Lead*\n\n*Contact:* {{ $json.fullName }}\n*Email:* {{ $json.email }}\n*Company:* {{ $json.company || 'Not provided' }}\n*Phone:* {{ $json.phone || 'Not provided' }}\n*Budget:* {{ $json.budget || 'Not specified' }}\n\n*Lead Score:* {{ $json.leadScore }}/100\n*Assigned to:* {{ $json.assignedSalesperson }}\n\n*Message:*\n> {{ $json.message || 'No additional message' }}\n\n*Source:* {{ $json.leadSource }}\n*Submitted:* {{ $json.submissionTime }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "notify-slack",
+      "name": "Notify Sales Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.leadPriority }}",
+              "rightValue": "Hot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-hot-lead",
+      "name": "Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.assignedSalesperson }}",
+        "subject": "Lead Alert - {{ $json.fullName }} from {{ $json.company }}",
+        "emailType": "html",
+        "message": "<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        .container { max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; }\n        .header { background-color: #dc3545; color: white; padding: 20px; text-align: center; }\n        .content { padding: 30px 20px; }\n        .lead-info { background-color: #f8f9fa; padding: 20px; margin: 15px 0; border-left: 4px solid #dc3545; }\n        .score-badge { background-color: #dc3545; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; display: inline-block; }\n        .action-section { background-color: #fff3cd; padding: 15px; margin: 20px 0; border-radius: 5px; border: 1px solid #ffeaa7; }\n        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <h1>🔥 Hot Lead Alert</h1>\n            <p>High-priority lead requires immediate attention</p>\n        </div>\n        <div class=\"content\">\n            <div class=\"lead-info\">\n                <h3>Lead Details</h3>\n                <p><strong>Name:</strong> {{ $json.fullName }}</p>\n                <p><strong>Email:</strong> {{ $json.email }}</p>\n                <p><strong>Company:</strong> {{ $json.company || 'Not provided' }}</p>\n                <p><strong>Phone:</strong> {{ $json.phone || 'Not provided' }}</p>\n                <p><strong>Budget:</strong> {{ $json.budget || 'Not specified' }}</p>\n                <p><strong>Lead Score:</strong> <span class=\"score-badge\">{{ $json.leadScore }}/100</span></p>\n            </div>\n            \n            <div class=\"action-section\">\n                <h3>⚡ Immediate Action Required</h3>\n                <p><strong>Response Time Goal:</strong> Within 1 hour</p>\n                <p><strong>Next Steps:</strong></p>\n                <ul>\n                    <li>Call the prospect immediately</li>\n                    <li>Send personalized email</li>\n                    <li>Update lead status in CRM</li>\n                    <li>Schedule follow-up if no answer</li>\n                </ul>\n            </div>\n            \n            <h3>Prospect's Message:</h3>\n            <div style=\"background-color: #e9ecef; padding: 15px; border-radius: 5px; font-style: italic;\">\n                {{ $json.message || 'No additional message provided' }}\n            </div>\n            \n            <p style=\"margin-top: 20px;\"><strong>Form submitted:</strong> {{ $json.submissionTime }}</p>\n        </div>\n        <div class=\"footer\">\n            <p>This lead was automatically scored and assigned. Update the status in your CRM after contact.</p>\n        </div>\n    </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "urgent-email-alert",
+      "name": "Send Urgent Email Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1780, 220]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "Thank you for your inquiry, {{ $json.fullName.split(' ')[0] }}!",
+        "emailType": "html",
+        "message": "<!DOCTYPE html>\n<html>\n<head>\n    <style>\n        .container { max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; }\n        .header { background-color: #007bff; color: white; padding: 20px; text-align: center; }\n        .content { padding: 30px 20px; }\n        .highlight-box { background-color: #e7f3ff; padding: 20px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #007bff; }\n        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #666; }\n    </style>\n</head>\n<body>\n    <div class=\"container\">\n        <div class=\"header\">\n            <h1>Thank You for Your Inquiry!</h1>\n        </div>\n        <div class=\"content\">\n            <p>Hi {{ $json.fullName.split(' ')[0] }},</p>\n            \n            <p>Thank you for reaching out to us! We've received your inquiry and wanted to let you know that we're excited to learn more about your project.</p>\n            \n            <div class=\"highlight-box\">\n                <h3>What happens next?</h3>\n                <ul>\n                    <li><strong>Review:</strong> Our team is reviewing your requirements</li>\n                    <li><strong>Response:</strong> We'll get back to you within 24 hours</li>\n                    <li><strong>Consultation:</strong> We'll schedule a call to discuss your needs</li>\n                </ul>\n            </div>\n            \n            <p>In the meantime, feel free to:</p>\n            <ul>\n                <li>Check out our <a href=\"#\">case studies</a> for similar projects</li>\n                <li>Review our <a href=\"#\">service offerings</a></li>\n                <li>Connect with us on <a href=\"#\">LinkedIn</a></li>\n            </ul>\n            \n            <p>If you have any urgent questions, don't hesitate to reply to this email or call us directly.</p>\n            \n            <p>Best regards,<br>The Sales Team</p>\n        </div>\n        <div class=\"footer\">\n            <p>You're receiving this email because you submitted an inquiry through our website.</p>\n        </div>\n    </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "send-autoresponse",
+      "name": "Send Auto-Response",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1780, 380]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always send immediate acknowledgment emails. Response time expectations are crucial for lead conversion. Even automated responses improve perceived responsiveness.",
+        "height": 80,
+        "width": 350
+      },
+      "id": "tip-node-4",
+      "name": "n8n Tip - Response Time",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1780, 480]
+    },
+    {
+      "parameters": {
+        "sendTo": "admin@company.com",
+        "subject": "Invalid Lead Submission - Data Validation Failed",
+        "emailType": "text",
+        "message": "A form submission failed validation:\n\nTimestamp: {{ $('New Form Submission').item.json.Timestamp }}\nEmail: {{ $('Normalize Form Data').item.json.email }}\nName: {{ $('Normalize Form Data').item.json.fullName }}\n\nRaw form data:\n{{ JSON.stringify($('New Form Submission').item.json, null, 2) }}\n\nPlease review the form submission and follow up manually if needed.",
+        "options": {}
+      },
+      "id": "invalid-lead-notification",
+      "name": "Notify Invalid Lead",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [900, 480]
+    }
+  ],
+  "connections": {
+    "New Form Submission": {
+      "main": [
+        [
+          {
+            "node": "Normalize Form Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Form Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Score and Assign Lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Invalid Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score and Assign Lead": {
+      "main": [
+        [
+          {
+            "node": "Add to Leads Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Leads Database": {
+      "main": [
+        [
+          {
+            "node": "Notify Sales Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Sales Team": {
+      "main": [
+        [
+          {
+            "node": "Hot Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot Lead?": {
+      "main": [
+        [
+          {
+            "node": "Send Urgent Email Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Auto-Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Auto-Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "flow-v2",
+  "id": "google-forms-lead-pipeline",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
