@@ -1,0 +1,765 @@
+{
+  "name": "Gmail to Trello Task Management",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {
+          "labelIds": [
+            "STARRED"
+          ],
+          "includeSpamTrash": false
+        },
+        "format": "simple",
+        "options": {
+          "downloadAttachments": false,
+          "maxResults": 10
+        }
+      },
+      "id": "gmail-trigger",
+      "name": "Starred Email Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Using starred emails as triggers is more reliable than keywords for task creation. Users can quickly star emails that need action without complex filtering rules.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-1",
+      "name": "n8n Tip - Trigger Strategy",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [440, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "emailSubject",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "emailFrom",
+              "value": "={{ $json.from }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "emailBody",
+              "value": "={{ $json.textPlain || $json.textHtml || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "emailDate",
+              "value": "={{ $json.date }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "emailId",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-6",
+              "name": "threadId",
+              "value": "={{ $json.threadId }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-7",
+              "name": "emailSnippet",
+              "value": "={{ $json.snippet || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-8",
+              "name": "hasAttachments",
+              "value": "={{ $json.attachments && $json.attachments.length > 0 }}",
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-email-data",
+      "name": "Extract Email Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "priority",
+              "value": "={{ \n  const subject = $json.emailSubject.toLowerCase();\n  const body = $json.emailBody.toLowerCase();\n  const from = $json.emailFrom.toLowerCase();\n  \n  // High priority indicators\n  const urgentKeywords = ['urgent', 'asap', 'immediate', 'emergency', 'critical', 'deadline', 'today'];\n  const vipDomains = ['@ceo.com', '@board.com', '@executive.com'];\n  \n  // Check for urgent keywords\n  const hasUrgentKeyword = urgentKeywords.some(keyword => \n    subject.includes(keyword) || body.includes(keyword)\n  );\n  \n  // Check for VIP sender\n  const isVipSender = vipDomains.some(domain => from.includes(domain));\n  \n  // Check for deadline mentions\n  const hasDeadline = /\\b(deadline|due|expires?)\\s+(today|tomorrow|this week)/i.test(subject + ' ' + body);\n  \n  if (hasUrgentKeyword || isVipSender || hasDeadline) {\n    return 'High';\n  } else if (subject.includes('meeting') || subject.includes('review') || body.includes('please review')) {\n    return 'Medium';\n  } else {\n    return 'Low';\n  }\n}}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "category",
+              "value": "={{ \n  const subject = $json.emailSubject.toLowerCase();\n  const body = $json.emailBody.toLowerCase();\n  \n  if (subject.includes('meeting') || subject.includes('calendar') || subject.includes('schedule')) {\n    return 'Meeting';\n  } else if (subject.includes('review') || body.includes('please review') || body.includes('feedback')) {\n    return 'Review';\n  } else if (subject.includes('bug') || subject.includes('issue') || subject.includes('problem') || subject.includes('error')) {\n    return 'Bug';\n  } else if (subject.includes('feature') || subject.includes('enhancement') || body.includes('new feature')) {\n    return 'Feature';\n  } else if (subject.includes('support') || subject.includes('help') || body.includes('assistance')) {\n    return 'Support';\n  } else if (subject.includes('admin') || subject.includes('account') || subject.includes('billing')) {\n    return 'Administrative';\n  } else {\n    return 'General';\n  }\n}}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "dueDate",
+              "value": "={{ \n  const subject = $json.emailSubject;\n  const body = $json.emailBody;\n  const text = (subject + ' ' + body).toLowerCase();\n  \n  // Look for specific date patterns\n  const todayPattern = /\\b(today|by end of day|eod)\\b/;\n  const tomorrowPattern = /\\b(tomorrow|by tomorrow)\\b/;\n  const thisWeekPattern = /\\b(this week|by friday|end of week)\\b/;\n  const nextWeekPattern = /\\b(next week|monday)\\b/;\n  \n  const now = new Date();\n  \n  if (todayPattern.test(text)) {\n    return now.toISOString().split('T')[0];\n  } else if (tomorrowPattern.test(text)) {\n    const tomorrow = new Date(now);\n    tomorrow.setDate(tomorrow.getDate() + 1);\n    return tomorrow.toISOString().split('T')[0];\n  } else if (thisWeekPattern.test(text)) {\n    const friday = new Date(now);\n    friday.setDate(friday.getDate() + (5 - friday.getDay()));\n    return friday.toISOString().split('T')[0];\n  } else if (nextWeekPattern.test(text)) {\n    const nextMonday = new Date(now);\n    nextMonday.setDate(nextMonday.getDate() + (8 - nextMonday.getDay()));\n    return nextMonday.toISOString().split('T')[0];\n  } else {\n    // Default to 3 days from now\n    const defaultDue = new Date(now);\n    defaultDue.setDate(defaultDue.getDate() + 3);\n    return defaultDue.toISOString().split('T')[0];\n  }\n}}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "assignee",
+              "value": "={{ \n  const subject = $json.emailSubject.toLowerCase();\n  const body = $json.emailBody.toLowerCase();\n  \n  // Team assignment logic based on content\n  if (subject.includes('bug') || subject.includes('error') || body.includes('not working')) {\n    return 'dev-team';\n  } else if (subject.includes('design') || body.includes('ui') || body.includes('ux')) {\n    return 'design-team';\n  } else if (subject.includes('marketing') || body.includes('campaign') || body.includes('social media')) {\n    return 'marketing-team';\n  } else if (subject.includes('sales') || body.includes('client') || body.includes('proposal')) {\n    return 'sales-team';\n  } else if (subject.includes('support') || body.includes('customer') || body.includes('help')) {\n    return 'support-team';\n  } else {\n    return 'general';\n  }\n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "analyze-email-content",
+      "name": "Analyze Email Content",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Use consistent logic for priority and category assignment. Consider creating a separate configuration node or external file for easy rule updates without workflow changes.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-2",
+      "name": "n8n Tip - Classification Logic",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [680, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.category }}",
+              "rightValue": "Bug",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "route-to-bug-board",
+      "name": "Bug Related?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 220]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.category }}",
+              "rightValue": "Feature",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "route-to-feature-board",
+      "name": "Feature Related?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "High",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "route-to-urgent-board",
+      "name": "High Priority?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2Api",
+        "boardId": {
+          "__rl": true,
+          "value": "BUG_BOARD_ID",
+          "mode": "list",
+          "cachedResultName": "Bug Tracking Board"
+        },
+        "listId": {
+          "__rl": true,
+          "value": "NEW_BUGS_LIST_ID",
+          "mode": "list",
+          "cachedResultName": "New Bugs"
+        },
+        "name": "{{ $('Extract Email Data').item.json.emailSubject }}",
+        "description": "**From:** {{ $('Extract Email Data').item.json.emailFrom }}\n**Date:** {{ $('Extract Email Data').item.json.emailDate }}\n**Priority:** {{ $json.priority }}\n\n**Email Content:**\n{{ $('Extract Email Data').item.json.emailSnippet }}\n\n**Gmail Link:** https://mail.google.com/mail/u/0/#inbox/{{ $('Extract Email Data').item.json.emailId }}\n\n**Thread ID:** {{ $('Extract Email Data').item.json.threadId }}",
+        "additionalFields": {
+          "dueDateTime": "{{ $json.dueDate }}T17:00:00.000Z",
+          "labelIds": [
+            "LABEL_ID_HIGH_PRIORITY"
+          ]
+        }
+      },
+      "id": "create-bug-card",
+      "name": "Create Bug Card",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [1120, 220]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2Api",
+        "boardId": {
+          "__rl": true,
+          "value": "FEATURE_BOARD_ID",
+          "mode": "list",
+          "cachedResultName": "Feature Requests Board"
+        },
+        "listId": {
+          "__rl": true,
+          "value": "FEATURE_BACKLOG_LIST_ID",
+          "mode": "list",
+          "cachedResultName": "Feature Backlog"
+        },
+        "name": "{{ $('Extract Email Data').item.json.emailSubject }}",
+        "description": "**From:** {{ $('Extract Email Data').item.json.emailFrom }}\n**Date:** {{ $('Extract Email Data').item.json.emailDate }}\n**Priority:** {{ $json.priority }}\n**Category:** {{ $json.category }}\n\n**Email Content:**\n{{ $('Extract Email Data').item.json.emailSnippet }}\n\n**Gmail Link:** https://mail.google.com/mail/u/0/#inbox/{{ $('Extract Email Data').item.json.emailId }}\n\n**Thread ID:** {{ $('Extract Email Data').item.json.threadId }}",
+        "additionalFields": {
+          "dueDateTime": "{{ $json.dueDate }}T17:00:00.000Z",
+          "labelIds": [
+            "LABEL_ID_FEATURE_REQUEST"
+          ]
+        }
+      },
+      "id": "create-feature-card",
+      "name": "Create Feature Card",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [1120, 320]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2Api",
+        "boardId": {
+          "__rl": true,
+          "value": "URGENT_BOARD_ID",
+          "mode": "list",
+          "cachedResultName": "Urgent Tasks Board"
+        },
+        "listId": {
+          "__rl": true,
+          "value": "URGENT_TODAY_LIST_ID",
+          "mode": "list",
+          "cachedResultName": "Urgent Today"
+        },
+        "name": "URGENT: {{ $('Extract Email Data').item.json.emailSubject }}",
+        "description": "**From:** {{ $('Extract Email Data').item.json.emailFrom }}\n**Date:** {{ $('Extract Email Data').item.json.emailDate }}\n**Priority:** {{ $json.priority }}\n**Category:** {{ $json.category }}\n**Assigned to:** {{ $json.assignee }}\n\n**Email Content:**\n{{ $('Extract Email Data').item.json.emailSnippet }}\n\n**Gmail Link:** https://mail.google.com/mail/u/0/#inbox/{{ $('Extract Email Data').item.json.emailId }}\n\n**Thread ID:** {{ $('Extract Email Data').item.json.threadId }}\n\n**Attachments:** {{ $('Extract Email Data').item.json.hasAttachments ? 'Yes - Check email' : 'None' }}",
+        "additionalFields": {
+          "dueDateTime": "{{ $json.dueDate }}T17:00:00.000Z",
+          "labelIds": [
+            "LABEL_ID_URGENT",
+            "LABEL_ID_HIGH_PRIORITY"
+          ]
+        }
+      },
+      "id": "create-urgent-card",
+      "name": "Create Urgent Card",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2Api",
+        "boardId": {
+          "__rl": true,
+          "value": "GENERAL_BOARD_ID",
+          "mode": "list",
+          "cachedResultName": "General Tasks Board"
+        },
+        "listId": {
+          "__rl": true,
+          "value": "INBOX_LIST_ID",
+          "mode": "list",
+          "cachedResultName": "Inbox"
+        },
+        "name": "{{ $('Extract Email Data').item.json.emailSubject }}",
+        "description": "**From:** {{ $('Extract Email Data').item.json.emailFrom }}\n**Date:** {{ $('Extract Email Data').item.json.emailDate }}\n**Priority:** {{ $('Analyze Email Content').item.json.priority }}\n**Category:** {{ $('Analyze Email Content').item.json.category }}\n**Assigned to:** {{ $('Analyze Email Content').item.json.assignee }}\n\n**Email Content:**\n{{ $('Extract Email Data').item.json.emailSnippet }}\n\n**Gmail Link:** https://mail.google.com/mail/u/0/#inbox/{{ $('Extract Email Data').item.json.emailId }}\n\n**Thread ID:** {{ $('Extract Email Data').item.json.threadId }}\n\n**Attachments:** {{ $('Extract Email Data').item.json.hasAttachments ? 'Yes - Check email' : 'None' }}",
+        "additionalFields": {
+          "dueDateTime": "{{ $('Analyze Email Content').item.json.dueDate }}T17:00:00.000Z"
+        }
+      },
+      "id": "create-general-card",
+      "name": "Create General Card",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [1120, 520]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Multiple board routing allows for specialized workflows. Each team can have their own board with custom lists, labels, and automation rules specific to their needs.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-3",
+      "name": "n8n Tip - Board Strategy",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1120, 120]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "trelloCardId",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "trelloCardUrl",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "boardName",
+              "value": "={{ \n  const category = $('Analyze Email Content').item.json.category;\n  const priority = $('Analyze Email Content').item.json.priority;\n  \n  if (category === 'Bug') return 'Bug Tracking';\n  if (category === 'Feature') return 'Feature Requests';\n  if (priority === 'High') return 'Urgent Tasks';\n  return 'General Tasks';\n}}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "createdAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "capture-card-details",
+      "name": "Capture Card Details",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1340, 320]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C9988776655",
+          "mode": "list",
+          "cachedResultName": "task-notifications"
+        },
+        "text": "New Task Created from Email\n\nSubject: {{ $('Extract Email Data').item.json.emailSubject }}\nFrom: {{ $('Extract Email Data').item.json.emailFrom }}\nPriority: {{ $('Analyze Email Content').item.json.priority }}\nCategory: {{ $('Analyze Email Content').item.json.category }}\nAssigned to: {{ $('Analyze Email Content').item.json.assignee }}\nDue Date: {{ $('Analyze Email Content').item.json.dueDate }}\n\nBoard: {{ $json.boardName }}\nTrello Card: {{ $json.trelloCardUrl }}\n\nEmail Preview:\n{{ $('Extract Email Data').item.json.emailSnippet.substring(0, 200) }}{{ $('Extract Email Data').item.json.emailSnippet.length > 200 ? '...' : '' }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "notify-team",
+      "name": "Notify Team via Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1560, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $('Analyze Email Content').item.json.assignee }}",
+              "rightValue": "general",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-specific-assignee",
+      "name": "Specific Team Assignment?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 320]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "teamChannelMap",
+              "value": "{{ {\n  'dev-team': 'C1111111111',\n  'design-team': 'C2222222222', \n  'marketing-team': 'C3333333333',\n  'sales-team': 'C4444444444',\n  'support-team': 'C5555555555'\n} }}",
+              "type": "object"
+            },
+            {
+              "id": "assignment-2",
+              "name": "assignedTeamChannel",
+              "value": "={{ $json.teamChannelMap[$('Analyze Email Content').item.json.assignee] || '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-team-channel",
+      "name": "Get Team Channel",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [2000, 220]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": "={{ $json.assignedTeamChannel }}",
+        "text": "New Task Assigned to Your Team\n\nSubject: {{ $('Extract Email Data').item.json.emailSubject }}\nFrom: {{ $('Extract Email Data').item.json.emailFrom }}\nPriority: {{ $('Analyze Email Content').item.json.priority }}\nCategory: {{ $('Analyze Email Content').item.json.category }}\nDue Date: {{ $('Analyze Email Content').item.json.dueDate }}\n\nAction Required: Please review and assign to a team member\n\nTrello Card: {{ $('Capture Card Details').item.json.trelloCardUrl }}\nEmail Link: https://mail.google.com/mail/u/0/#inbox/{{ $('Extract Email Data').item.json.emailId }}\n\nEmail Preview:\n{{ $('Extract Email Data').item.json.emailSnippet.substring(0, 150) }}{{ $('Extract Email Data').item.json.emailSnippet.length > 150 ? '...' : '' }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "notify-assigned-team",
+      "name": "Notify Assigned Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2220, 220]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Team-specific notifications ensure the right people see relevant tasks immediately. Consider adding escalation rules for high-priority items.",
+        "height": 80,
+        "width": 350
+      },
+      "id": "tip-node-4",
+      "name": "n8n Tip - Targeted Notifications",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [2220, 120]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2Api",
+        "operation": "removeStarFromEmail",
+        "messageId": "={{ $('Extract Email Data').item.json.emailId }}"
+      },
+      "id": "remove-star",
+      "name": "Remove Star from Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2440, 320]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2Api",
+        "operation": "addLabelToEmail",
+        "messageId": "={{ $('Extract Email Data').item.json.emailId }}",
+        "labelIds": [
+          "LABEL_PROCESSED_TO_TRELLO"
+        ]
+      },
+      "id": "add-processed-label",
+      "name": "Add Processed Label",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2660, 320]
+    }
+  ],
+  "connections": {
+    "Starred Email Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email Data": {
+      "main": [
+        [
+          {
+            "node": "Analyze Email Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Email Content": {
+      "main": [
+        [
+          {
+            "node": "Bug Related?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Feature Related?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "High Priority?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bug Related?": {
+      "main": [
+        [
+          {
+            "node": "Create Bug Card",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create General Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feature Related?": {
+      "main": [
+        [
+          {
+            "node": "Create Feature Card",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create General Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "High Priority?": {
+      "main": [
+        [
+          {
+            "node": "Create Urgent Card",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create General Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Bug Card": {
+      "main": [
+        [
+          {
+            "node": "Capture Card Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Feature Card": {
+      "main": [
+        [
+          {
+            "node": "Capture Card Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Urgent Card": {
+      "main": [
+        [
+          {
+            "node": "Capture Card Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create General Card": {
+      "main": [
+        [
+          {
+            "node": "Capture Card Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Card Details": {
+      "main": [
+        [
+          {
+            "node": "Notify Team via Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Team via Slack": {
+      "main": [
+        [
+          {
+            "node": "Specific Team Assignment?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Specific Team Assignment?": {
+      "main": [
+        [
+          {
+            "node": "Get Team Channel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Remove Star from Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Team Channel": {
+      "main": [
+        [
+          {
+            "node": "Notify Assigned Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Assigned Team": {
+      "main": [
+        [
+          {
+            "node": "Remove Star from Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Star from Email": {
+      "main": [
+        [
+          {
+            "node": "Add Processed Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "flow-v5",
+  "id": "gmail-trello-task-management",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

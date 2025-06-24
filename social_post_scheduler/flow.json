@@ -1,0 +1,789 @@
+{
+  "name": "Social Media Content Scheduler",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */30 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Check Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Schedule triggers should run frequently enough to handle time-sensitive content but not so often as to hit API limits. 30 minutes is optimal for most social media workflows.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-1",
+      "name": "n8n Tip - Scheduling Frequency",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [440, 180]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Content Calendar"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Schedule"
+        },
+        "options": {
+          "range": "A:J",
+          "useHeaderRow": true
+        }
+      },
+      "id": "read-content-calendar",
+      "name": "Read Content Calendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.Status }}",
+              "rightValue": "Scheduled",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ new Date($json['Scheduled Time']).getTime() }}",
+              "rightValue": "={{ $now.minus({minutes: 15}).toMillis() }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "condition-3",
+              "leftValue": "={{ new Date($json['Scheduled Time']).getTime() }}",
+              "rightValue": "={{ $now.plus({minutes: 15}).toMillis() }}",
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-ready-posts",
+      "name": "Filter Ready to Post",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Use a 30-minute time window for posting to handle slight delays and ensure content gets published even if the exact minute is missed.",
+        "height": 80,
+        "width": 350
+      },
+      "id": "tip-node-2",
+      "name": "n8n Tip - Time Windows",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [680, 180]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "postContent",
+              "value": "={{ $json['Content'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "platforms",
+              "value": "={{ $json['Platforms'].split(',').map(p => p.trim()) }}",
+              "type": "array"
+            },
+            {
+              "id": "assignment-3",
+              "name": "imageUrl",
+              "value": "={{ $json['Image URL'] || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "hashtags",
+              "value": "={{ $json['Hashtags'] || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "campaignTag",
+              "value": "={{ $json['Campaign'] || 'general' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-6",
+              "name": "scheduledTime",
+              "value": "={{ $json['Scheduled Time'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-7",
+              "name": "rowNumber",
+              "value": "={{ $json['Row Number'] || $itemIndex + 2 }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-8",
+              "name": "priority",
+              "value": "={{ $json['Priority'] || 'normal' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-post-data",
+      "name": "Prepare Post Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "twitterContent",
+              "value": "={{ \n  let content = $json.postContent;\n  const maxLength = 280;\n  \n  // Add hashtags if they fit\n  if ($json.hashtags && (content.length + $json.hashtags.length + 1) <= maxLength) {\n    content += ' ' + $json.hashtags;\n  }\n  \n  // Truncate if too long\n  if (content.length > maxLength) {\n    content = content.substring(0, maxLength - 3) + '...';\n  }\n  \n  return content;\n}}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "linkedinContent",
+              "value": "={{ \n  let content = $json.postContent;\n  \n  // LinkedIn allows longer content, add hashtags at the end\n  if ($json.hashtags) {\n    content += '\\n\\n' + $json.hashtags;\n  }\n  \n  // Add campaign attribution\n  if ($json.campaignTag !== 'general') {\n    content += '\\n\\n#' + $json.campaignTag.replace(/\\s+/g, '');\n  }\n  \n  return content;\n}}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "facebookContent",
+              "value": "={{ \n  let content = $json.postContent;\n  \n  // Facebook allows long content, format nicely\n  if ($json.hashtags) {\n    content += '\\n\\n' + $json.hashtags;\n  }\n  \n  return content;\n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-platform-content",
+      "name": "Format Platform Content",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Each platform has different character limits and content styles. Always format content specifically for each platform rather than using one-size-fits-all approach.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-3",
+      "name": "n8n Tip - Platform Optimization",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.platforms }}",
+              "rightValue": "Twitter",
+              "operator": {
+                "type": "array",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-twitter",
+      "name": "Post to Twitter?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.twitterContent }}",
+        "additionalFields": {}
+      },
+      "id": "post-to-twitter",
+      "name": "Post to Twitter",
+      "type": "n8n-nodes-base.twitter",
+      "typeVersion": 2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.platforms }}",
+              "rightValue": "LinkedIn",
+              "operator": {
+                "type": "array",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-linkedin",
+      "name": "Post to LinkedIn?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "postAs": "person",
+        "text": "={{ $json.linkedinContent }}",
+        "additionalFields": {}
+      },
+      "id": "post-to-linkedin",
+      "name": "Post to LinkedIn",
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.platforms }}",
+              "rightValue": "Facebook",
+              "operator": {
+                "type": "array",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-facebook",
+      "name": "Post to Facebook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 400]
+    },
+    {
+      "parameters": {
+        "postType": "page",
+        "page": {
+          "__rl": true,
+          "value": "YOUR_PAGE_ID",
+          "mode": "list",
+          "cachedResultName": "Your Business Page"
+        },
+        "content": "={{ $json.facebookContent }}",
+        "additionalFields": {}
+      },
+      "id": "post-to-facebook",
+      "name": "Post to Facebook",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "typeVersion": 1,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "publishedPlatforms",
+              "value": "={{ \n  let published = [];\n  \n  // Check which platforms were successfully posted to\n  const platforms = $('Prepare Post Data').item.json.platforms;\n  \n  if (platforms.includes('Twitter') && $('Post to Twitter').item) {\n    published.push('Twitter');\n  }\n  \n  if (platforms.includes('LinkedIn') && $('Post to LinkedIn').item) {\n    published.push('LinkedIn');\n  }\n  \n  if (platforms.includes('Facebook') && $('Post to Facebook').item) {\n    published.push('Facebook');\n  }\n  \n  return published.join(', ');\n}}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "publishTime",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "originalRowNumber",
+              "value": "={{ $('Prepare Post Data').item.json.rowNumber }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-4",
+              "name": "campaignTag",
+              "value": "={{ $('Prepare Post Data').item.json.campaignTag }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "track-publishing-results",
+      "name": "Track Publishing Results",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Content Calendar"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Schedule"
+        },
+        "columnToMatchOn": "Row Number",
+        "valueToMatchOn": "={{ $json.originalRowNumber }}",
+        "fieldsToUpdate": {
+          "values": {
+            "Status": "Published",
+            "Published Time": "={{ $json.publishTime }}",
+            "Platforms Published": "={{ $json.publishedPlatforms }}",
+            "Notes": "Auto-published by n8n workflow"
+          }
+        },
+        "options": {}
+      },
+      "id": "update-calendar-status",
+      "name": "Update Calendar Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always update your content calendar with publishing results. This creates an audit trail and prevents duplicate posts if the workflow runs again.",
+        "height": 80,
+        "width": 350
+      },
+      "id": "tip-node-4",
+      "name": "n8n Tip - Audit Trail",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [2000, 180]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ANALYTICS_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Social Media Analytics"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Published Posts"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Publish Date": "={{ new Date($json.publishTime).toLocaleDateString() }}",
+            "Publish Time": "={{ new Date($json.publishTime).toLocaleTimeString() }}",
+            "Campaign": "={{ $json.campaignTag }}",
+            "Platforms": "={{ $json.publishedPlatforms }}",
+            "Content Preview": "={{ $('Prepare Post Data').item.json.postContent.substring(0, 100) + '...' }}",
+            "Scheduled Time": "={{ $('Prepare Post Data').item.json.scheduledTime }}",
+            "Time Difference": "={{ Math.round((new Date($json.publishTime).getTime() - new Date($('Prepare Post Data').item.json.scheduledTime).getTime()) / 60000) }} minutes",
+            "Priority": "={{ $('Prepare Post Data').item.json.priority }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-analytics",
+      "name": "Log to Analytics",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C1122334455",
+          "mode": "list",
+          "cachedResultName": "marketing"
+        },
+        "text": "Social Media Post Published\n\nCampaign: {{ $json.campaignTag }}\nPlatforms: {{ $json.publishedPlatforms }}\nScheduled: {{ new Date($('Prepare Post Data').item.json.scheduledTime).toLocaleString() }}\nPublished: {{ new Date($json.publishTime).toLocaleString() }}\n\nContent Preview:\n{{ $('Prepare Post Data').item.json.postContent.substring(0, 200) }}{{ $('Prepare Post Data').item.json.postContent.length > 200 ? '...' : '' }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "id": "notify-team",
+      "name": "Notify Marketing Team",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [2440, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "totalProcessed",
+              "value": "={{ $('Read Content Calendar').all().length }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-2",
+              "name": "readyToPost",
+              "value": "={{ $('Filter Ready to Post').all().length }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-3",
+              "name": "successfullyPublished",
+              "value": "={{ $('Track Publishing Results').all().length }}",
+              "type": "number"
+            },
+            {
+              "id": "assignment-4",
+              "name": "executionTime",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "workflow-summary",
+      "name": "Workflow Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.successfullyPublished }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-no-posts",
+      "name": "No Posts Published?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "message",
+              "value": "No posts were ready for publishing in this cycle",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "no-posts-message",
+      "name": "No Posts Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [3100, 400]
+    }
+  ],
+  "connections": {
+    "Check Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Read Content Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Content Calendar": {
+      "main": [
+        [
+          {
+            "node": "Filter Ready to Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Ready to Post": {
+      "main": [
+        [
+          {
+            "node": "Prepare Post Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Post Data": {
+      "main": [
+        [
+          {
+            "node": "Format Platform Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Platform Content": {
+      "main": [
+        [
+          {
+            "node": "Post to Twitter?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to LinkedIn?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to Facebook?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Twitter?": {
+      "main": [
+        [
+          {
+            "node": "Post to Twitter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to LinkedIn?": {
+      "main": [
+        [
+          {
+            "node": "Post to LinkedIn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Facebook?": {
+      "main": [
+        [
+          {
+            "node": "Post to Facebook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Twitter": {
+      "main": [
+        [
+          {
+            "node": "Track Publishing Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to LinkedIn": {
+      "main": [
+        [
+          {
+            "node": "Track Publishing Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Facebook": {
+      "main": [
+        [
+          {
+            "node": "Track Publishing Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Publishing Results": {
+      "main": [
+        [
+          {
+            "node": "Update Calendar Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Calendar Status": {
+      "main": [
+        [
+          {
+            "node": "Log to Analytics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Analytics": {
+      "main": [
+        [
+          {
+            "node": "Notify Marketing Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Marketing Team": {
+      "main": [
+        [
+          {
+            "node": "Workflow Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Summary": {
+      "main": [
+        [
+          {
+            "node": "No Posts Published?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Posts Published?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "No Posts Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "flow-v4",
+  "id": "social-media-content-scheduler",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
+}

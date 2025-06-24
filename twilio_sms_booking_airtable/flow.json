@@ -1,0 +1,1121 @@
+{
+  "name": "Twilio SMS Booking Confirmation System",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/booking-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "booking-webhook",
+      "name": "New Booking Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "booking-webhook"
+    },
+    {
+      "parameters": {
+        "content": "TIP: Accept bookings via webhook from any source - your website, booking forms, or manual entry. This makes the system flexible and integrates with existing booking processes.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-1",
+      "name": "n8n Tip - Flexible Integration",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [440, 180]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.customerName }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.phoneNumber }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "condition-3",
+              "leftValue": "={{ $json.bookingDate }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "condition-4",
+              "leftValue": "={{ $json.phoneNumber }}",
+              "rightValue": "^\\+?[1-9]\\d{1,14}$",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-booking-data",
+      "name": "Validate Booking Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "bookingId",
+              "value": "{{ $json.bookingId || 'BK-' + new Date().getTime() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "customerName",
+              "value": "={{ $json.customerName }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "phoneNumber",
+              "value": "={{ $json.phoneNumber.startsWith('+') ? $json.phoneNumber : '+1' + $json.phoneNumber.replace(/[^0-9]/g, '') }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "bookingDate",
+              "value": "={{ new Date($json.bookingDate).toISOString().split('T')[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "bookingTime",
+              "value": "={{ $json.bookingTime || '10:00' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-6",
+              "name": "service",
+              "value": "={{ $json.service || 'Service Appointment' }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-7",
+              "name": "createdAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-8",
+              "name": "confirmationStatus",
+              "value": "Pending",
+              "type": "string"
+            },
+            {
+              "id": "assignment-9",
+              "name": "reminderSent",
+              "value": "No",
+              "type": "string"
+            },
+            {
+              "id": "assignment-10",
+              "name": "confirmationDeadline",
+              "value": "={{ new Date(new Date($json.bookingDate).getTime() - (2 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-booking-data",
+      "name": "Prepare Booking Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Booking Management Base"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_BOOKINGS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Booking ID": "={{ $json.bookingId }}",
+            "Customer Name": "={{ $json.customerName }}",
+            "Phone Number": "={{ $json.phoneNumber }}",
+            "Booking Date": "={{ $json.bookingDate }}",
+            "Booking Time": "={{ $json.bookingTime }}",
+            "Service": "={{ $json.service }}",
+            "Created At": "={{ $json.createdAt }}",
+            "Confirmation Status": "={{ $json.confirmationStatus }}",
+            "Reminder Sent": "={{ $json.reminderSent }}",
+            "Confirmation Deadline": "={{ $json.confirmationDeadline }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "save-to-airtable",
+      "name": "Save to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Store booking confirmations in Airtable for easy management and reporting. Include all necessary fields for tracking confirmation status and automated follow-ups.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-2",
+      "name": "n8n Tip - Data Management",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "fromNumber": "YOUR_TWILIO_PHONE_NUMBER",
+        "toNumber": "={{ $('Prepare Booking Data').item.json.phoneNumber }}",
+        "message": "Hi {{ $('Prepare Booking Data').item.json.customerName }}! Your booking for {{ $('Prepare Booking Data').item.json.service }} on {{ new Date($('Prepare Booking Data').item.json.bookingDate).toLocaleDateString() }} at {{ $('Prepare Booking Data').item.json.bookingTime }} has been confirmed.\n\nBooking ID: {{ $('Prepare Booking Data').item.json.bookingId }}\n\nYou'll receive a confirmation reminder 2 days before your appointment. Thank you!",
+        "options": {}
+      },
+      "id": "send-booking-confirmation",
+      "name": "Send Booking Confirmation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"success\", \"message\": \"Booking created and confirmation sent\", \"bookingId\": \"{{ $('Prepare Booking Data').item.json.bookingId }}\" }"
+      },
+      "id": "webhook-success-response",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"error\", \"message\": \"Invalid booking data provided\" }"
+      },
+      "id": "webhook-error-response",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [680, 480]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "daily-reminder-check",
+      "name": "Daily Reminder Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 700]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Run reminder checks daily at a consistent time (10 AM here). This ensures reminders are sent reliably and allows for business hours delivery.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-3",
+      "name": "n8n Tip - Scheduled Reminders",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [440, 580]
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Booking Management Base"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_BOOKINGS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "options": {
+          "filterByFormula": "AND({Confirmation Deadline} = TODAY(), {Reminder Sent} = 'No', {Confirmation Status} = 'Pending')"
+        }
+      },
+      "id": "find-bookings-needing-reminder",
+      "name": "Find Bookings Needing Reminder",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [460, 700]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-if-bookings-found",
+      "name": "Bookings Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 700]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "bookingId",
+              "value": "={{ $json.fields['Booking ID'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "customerName",
+              "value": "={{ $json.fields['Customer Name'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "phoneNumber",
+              "value": "={{ $json.fields['Phone Number'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "bookingDate",
+              "value": "={{ $json.fields['Booking Date'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "bookingTime",
+              "value": "={{ $json.fields['Booking Time'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-6",
+              "name": "service",
+              "value": "={{ $json.fields['Service'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-7",
+              "name": "recordId",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-reminder-data",
+      "name": "Extract Reminder Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "fromNumber": "YOUR_TWILIO_PHONE_NUMBER",
+        "toNumber": "={{ $json.phoneNumber }}",
+        "message": "Hi {{ $json.customerName }}! This is a reminder for your {{ $json.service }} appointment on {{ new Date($json.bookingDate).toLocaleDateString() }} at {{ $json.bookingTime }}.\n\nPlease reply:\n✅ YES to confirm\n❌ NO to cancel\n\nBooking ID: {{ $json.bookingId }}\n\nThank you!",
+        "options": {}
+      },
+      "id": "send-reminder-sms",
+      "name": "Send Reminder SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1120, 700]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Booking Management Base"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_BOOKINGS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "id": "={{ $('Extract Reminder Data').item.json.recordId }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Reminder Sent": "Yes",
+            "Reminder Sent At": "={{ $now.toISO() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "update-reminder-status",
+      "name": "Update Reminder Status",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1340, 700]
+    },
+    {
+      "parameters": {
+        "content": "TIP: Always update the database when actions are taken. This prevents duplicate reminders and provides an audit trail of all communications.",
+        "height": 80,
+        "width": 400
+      },
+      "id": "tip-node-4",
+      "name": "n8n Tip - Status Tracking",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1340, 580]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "/sms-response",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "sms-response-webhook",
+      "name": "SMS Response Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 1100],
+      "webhookId": "sms-response-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "fromNumber",
+              "value": "={{ $json.From }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "messageBody",
+              "value": "={{ $json.Body.toLowerCase().trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "receivedAt",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "twilioSid",
+              "value": "={{ $json.MessageSid }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-sms-response",
+      "name": "Extract SMS Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [460, 1100]
+    },
+    {
+      "parameters": {
+        "operation": "list",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Booking Management Base"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_BOOKINGS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "options": {
+          "filterByFormula": "AND({Phone Number} = '{{ $json.fromNumber }}', {Reminder Sent} = 'Yes', {Confirmation Status} = 'Pending')"
+        }
+      },
+      "id": "find-booking-by-phone",
+      "name": "Find Booking by Phone",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [680, 1100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-booking-found",
+      "name": "Booking Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 1100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assignment-1",
+              "name": "recordId",
+              "value": "={{ $json[0].id }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-2",
+              "name": "bookingId",
+              "value": "={{ $json[0].fields['Booking ID'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-3",
+              "name": "customerName",
+              "value": "={{ $json[0].fields['Customer Name'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-4",
+              "name": "bookingDate",
+              "value": "={{ $json[0].fields['Booking Date'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-5",
+              "name": "bookingTime",
+              "value": "={{ $json[0].fields['Booking Time'] }}",
+              "type": "string"
+            },
+            {
+              "id": "assignment-6",
+              "name": "service",
+              "value": "={{ $json[0].fields['Service'] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-booking-details",
+      "name": "Extract Booking Details",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1120, 1100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $('Extract SMS Response').item.json.messageBody }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "check-confirmation-response",
+      "name": "Confirmed (YES)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 1000]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $('Extract SMS Response').item.json.messageBody }}",
+              "rightValue": "no",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "check-cancellation-response",
+      "name": "Cancelled (NO)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 1200]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Booking Management Base"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_BOOKINGS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "id": "={{ $('Extract Booking Details').item.json.recordId }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Confirmation Status": "Confirmed",
+            "Confirmed At": "={{ $('Extract SMS Response').item.json.receivedAt }}",
+            "Response Message": "={{ $('Extract SMS Response').item.json.messageBody }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "mark-as-confirmed",
+      "name": "Mark as Confirmed",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1560, 920]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Booking Management Base"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_BOOKINGS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "id": "={{ $('Extract Booking Details').item.json.recordId }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Confirmation Status": "Cancelled",
+            "Cancelled At": "={{ $('Extract SMS Response').item.json.receivedAt }}",
+            "Response Message": "={{ $('Extract SMS Response').item.json.messageBody }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "mark-as-cancelled",
+      "name": "Mark as Cancelled",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1560, 1120]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Booking Management Base"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_BOOKINGS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "id": "={{ $('Extract Booking Details').item.json.recordId }}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Response Message": "={{ $('Extract SMS Response').item.json.messageBody }}",
+            "Unclear Response At": "={{ $('Extract SMS Response').item.json.receivedAt }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "mark-unclear-response",
+      "name": "Mark Unclear Response",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1560, 1320]
+    },
+    {
+      "parameters": {
+        "fromNumber": "YOUR_TWILIO_PHONE_NUMBER",
+        "toNumber": "={{ $('Extract SMS Response').item.json.fromNumber }}",
+        "message": "Thank you {{ $('Extract Booking Details').item.json.customerName }}! Your booking for {{ $('Extract Booking Details').item.json.service }} on {{ new Date($('Extract Booking Details').item.json.bookingDate).toLocaleDateString() }} at {{ $('Extract Booking Details').item.json.bookingTime }} is now CONFIRMED.\n\nBooking ID: {{ $('Extract Booking Details').item.json.bookingId }}\n\nSee you soon!",
+        "options": {}
+      },
+      "id": "send-confirmation-sms",
+      "name": "Send Confirmation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1780, 920]
+    },
+    {
+      "parameters": {
+        "fromNumber": "YOUR_TWILIO_PHONE_NUMBER",
+        "toNumber": "={{ $('Extract SMS Response').item.json.fromNumber }}",
+        "message": "Hi {{ $('Extract Booking Details').item.json.customerName }}, we've cancelled your booking for {{ $('Extract Booking Details').item.json.service }} on {{ new Date($('Extract Booking Details').item.json.bookingDate).toLocaleDateString() }} as requested.\n\nBooking ID: {{ $('Extract Booking Details').item.json.bookingId }}\n\nFeel free to book again anytime. Thank you!",
+        "options": {}
+      },
+      "id": "send-cancellation-sms",
+      "name": "Send Cancellation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1780, 1120]
+    },
+    {
+      "parameters": {
+        "fromNumber": "YOUR_TWILIO_PHONE_NUMBER",
+        "toNumber": "={{ $('Extract SMS Response').item.json.fromNumber }}",
+        "message": "Hi {{ $('Extract Booking Details').item.json.customerName }}, we didn't understand your response. Please reply:\n\n✅ YES to confirm your booking\n❌ NO to cancel\n\nFor {{ $('Extract Booking Details').item.json.service }} on {{ new Date($('Extract Booking Details').item.json.bookingDate).toLocaleDateString() }}\nBooking ID: {{ $('Extract Booking Details').item.json.bookingId }}",
+        "options": {}
+      },
+      "id": "send-clarification-sms",
+      "name": "Send Clarification SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1780, 1320]
+    },
+    {
+      "parameters": {
+        "respondWith": "xml",
+        "responseBody": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Response>\n    <Message>Response received and processed. Thank you!</Message>\n</Response>"
+      },
+      "id": "sms-webhook-response",
+      "name": "SMS Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2000, 1100]
+    },
+    {
+      "parameters": {
+        "fromNumber": "YOUR_TWILIO_PHONE_NUMBER",
+        "toNumber": "={{ $('Extract SMS Response').item.json.fromNumber }}",
+        "message": "We couldn't find a booking associated with this phone number that needs confirmation. Please contact us directly if you need assistance.\n\nThank you!",
+        "options": {}
+      },
+      "id": "send-no-booking-found-sms",
+      "name": "Send No Booking Found SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1120, 1300]
+    }
+  ],
+  "connections": {
+    "New Booking Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Booking Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Booking Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare Booking Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Booking Data": {
+      "main": [
+        [
+          {
+            "node": "Save to Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Airtable": {
+      "main": [
+        [
+          {
+            "node": "Send Booking Confirmation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Booking Confirmation SMS": {
+      "main": [
+        [
+          {
+            "node": "Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Reminder Check": {
+      "main": [
+        [
+          {
+            "node": "Find Bookings Needing Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Bookings Needing Reminder": {
+      "main": [
+        [
+          {
+            "node": "Bookings Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bookings Found?": {
+      "main": [
+        [
+          {
+            "node": "Extract Reminder Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Reminder Data": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder SMS": {
+      "main": [
+        [
+          {
+            "node": "Update Reminder Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SMS Response Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract SMS Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract SMS Response": {
+      "main": [
+        [
+          {
+            "node": "Find Booking by Phone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Booking by Phone": {
+      "main": [
+        [
+          {
+            "node": "Booking Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Found?": {
+      "main": [
+        [
+          {
+            "node": "Extract Booking Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send No Booking Found SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Booking Details": {
+      "main": [
+        [
+          {
+            "node": "Confirmed (YES)?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cancelled (NO)?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmed (YES)?": {
+      "main": [
+        [
+          {
+            "node": "Mark as Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Unclear Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancelled (NO)?": {
+      "main": [
+        [
+          {
+            "node": "Mark as Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Unclear Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Cancelled": {
+      "main": [
+        [
+          {
+            "node": "Send Cancellation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Unclear Response": {
+      "main": [
+        [
+          {
+            "node": "Send Clarification SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation SMS": {
+      "main": [
+        [
+          {
+            "node": "SMS Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Cancellation SMS": {
+      "main": [
+        [
+          {
+            "node": "SMS Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Clarification SMS": {
+      "main": [
+        [
+          {
+            "node": "SMS Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send No Booking Found SMS": {
+      "main": [
+        [
+          {
+            "node": "SMS Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "flow-v6",
+  "id": "twilio-booking-confirmation",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
