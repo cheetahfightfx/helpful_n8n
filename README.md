@@ -1,1 +1,1 @@
-N8N Flows for various business scenarios.
+n8n Flows for various business scenarios.
